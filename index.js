@@ -114,7 +114,6 @@ function saveUserToStorage(userId) {
 }
 
 function loadRememberedUser() {
-    let userId = null;
 
     userId = localStorage.getItem('lastUserId');
 
@@ -124,8 +123,8 @@ function loadRememberedUser() {
         const ca = decodedCookie.split(';');
         for(let i = 0; i < ca.length; i++) {
             let c = ca[i];
-            while (c.charAt(0) == ' ') c = c.substring(1);
-            if (c.indexOf(name) == 0) {
+            while (c.charAt(0) === ' ') c = c.substring(1);
+            if (c.indexOf(name) === 0) {
                 userId = c.substring(name.length, c.length);
                 break;
             }
