@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Kávová aplikace</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app-container">
+    <header>
+        <h1>Záznam nápojů</h1>
+    </header>
+
+    <main>
+        <div class="card">
+            <label for="userSelect">Kdo jsi?</label>
+            <select id="userSelect">
+                <option value="" disabled selected>Načítám uživatele...</option>
+            </select>
+        </div>
+
+        <div class="card">
+            <h2>Co jsi vypil?</h2>
+            <div id="drinksList" class="drinks-list">
+                <p>Načítám nápoje...</p>
+            </div>
+        </div>
+
+        <button id="submitBtn" class="btn-primary" disabled>Odeslat záznam</button>
+        <div id="notification" class="notification hidden"></div>
+    </main>
+</div>
+
+<script src="index.js"></script>
+</body>
+</html>
