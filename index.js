@@ -1,200 +1,184 @@
-const API_BASE = 'https://crm.skch.cz/ajax0/procedure.php';
+const API_URL = 'https://crm.skch.cz/ajax0/procedure.php';
 
-let state = {
-    users: [],
-    drinksData: [],
-    selectedUser: null,
-    drinkCounts: {}
+let vybranyUzivatel = "";
+let poctyNapoju = {};
+
+window.onload = function() {
+    document.getElementById('userSelect').onchange = function() {
+        vybratUzivatele(this.value);
+    };
+    document.getElementById('submitBtn').onclick = odeslatData;
+
+    nactiUzivatele();
+    nactiNapoje();
+    zkontrolujPamet();
+
+    poslatOfflineData();
+    window.addEventListener('online', poslatOfflineData);
 };
 
-const userSelect = document.getElementById('userSelect');
-const drinksList = document.getElementById('drinksList');
-const submitBtn = document.getElementById('submitBtn');
-const notification = document.getElementById('notification');
-
-async function init() {
-    await loadUsers();
-    await loadDrinks();
-    loadRememberedUser();
-
-    userSelect.addEventListener('change', (e) => {
-        state.selectedUser = e.target.value;
-        saveUserToStorage(state.selectedUser);
-        validateForm();
-    });
-
-    submitBtn.addEventListener('click', submitData);
+function vybratUzivatele(id) {
+    vybranyUzivatel = id;
+    localStorage.setItem('posledniUzivatel', id);
+    document.cookie = "posledniUzivatel=" + id + "; path=/; max-age=" + (30*24*60*60);
+    zkontrolujTlacitko();
 }
 
-async function apiCall(cmd, options = {}) {
-    try {
-        const url = `${API_BASE}?cmd=${cmd}`;
-        const response = await fetch(url, options);
-        if (!response.ok) throw new Error('Chyba sítě');
-        return await response.json();
-    } catch (error) {
-        showNotification(`Chyba API: ${error.message}`, true);
-        return null;
+async function nactiUzivatele() {
+    let response = await fetch(API_URL + '?cmd=getPeopleList');
+    let data = await response.json();
+    let select = document.getElementById('userSelect');
+
+    for (let klic in data) {
+        let clovek = data[klic];
+        let option = document.createElement('option');
+        option.value = clovek.ID;
+        option.innerHTML = clovek.name;
+        select.appendChild(option);
     }
 }
 
-async function loadUsers() {
-    const data = await apiCall('getPeopleList');
-    if (!data) return;
+async function nactiNapoje() {
+    let response = await fetch(API_URL + '?cmd=getTypesList');
+    let data = await response.json();
+    let seznam = document.getElementById('drinksList');
 
-    userSelect.innerHTML = '<option value="" disabled selected>Vyberte své jméno</option>';
-    const usersArray = Object.values(data);
+    seznam.innerHTML = "";
 
-    usersArray.forEach(person => {
-        const option = document.createElement('option');
-        option.value = person.ID;
-        option.textContent = person.name;
-        userSelect.appendChild(option);
-    });
+    for (let klic in data) {
+        let typ = data[klic].typ.trim();
+        poctyNapoju[typ] = 0;
 
-
-}
-
-async function loadDrinks() {
-    const data = await apiCall('getTypesList');
-    if (!data) return;
-
-
-    drinksList.innerHTML = '';
-    const drinksArray = Object.values(data);
-
-
-    drinksArray.forEach(type => {
-
-        const typName = type.typ;
-        state.drinkCounts[typName] = 0;
-        const item = document.createElement('div');
-        item.className = 'drink-item';
-        item.innerHTML = `
-            <span class="drink-name">${typName}</span>
-            <div class="counter">
-                <button class="btn-counter minus" data-type="${typName}">-</button>
-                <span class="drink-value" id="val-${typName}">0</span>
-                <button class="btn-counter plus" data-type="${typName}">+</button>
+        seznam.innerHTML += `
+            <div class="drink-item">
+                <span class="drink-name">${typ}</span>
+                <div class="counter">
+                    <button class="btn-counter minus" onclick="zmenitPocet('${typ}', -1)">-</button>
+                    <span class="drink-value" id="val-${typ}">0</span>
+                    <button class="btn-counter plus" onclick="zmenitPocet('${typ}', 1)">+</button>
+                </div>
             </div>
         `;
-        drinksList.appendChild(item);
-    });
-
-    document.querySelectorAll('.btn-counter').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.preventDefault();
-
-            const type = btn.getAttribute('data-type');
-            const isPlus = btn.classList.contains('plus');
-
-            if (isNaN(state.drinkCounts[type])) {
-                state.drinkCounts[type] = 0;
-            }
-
-            if (isPlus) {
-                state.drinkCounts[type]++;
-            } else if (state.drinkCounts[type] > 0) {
-                state.drinkCounts[type]--;
-            }
-
-            document.getElementById(`val-${type}`).textContent = state.drinkCounts[type];
-            validateForm();
-        });
-    });
+    }
 }
 
+function zmenitPocet(typ, zmena) {
+    poctyNapoju[typ] = poctyNapoju[typ] + zmena;
 
-function saveUserToStorage(userId) {
-    localStorage.setItem('lastUserId', userId);
+    if (poctyNapoju[typ] < 0) {
+        poctyNapoju[typ] = 0;
+    }
 
-    const d = new Date();
-    d.setTime(d.getTime() + (30*24*60*60*1000));
-    document.cookie = `lastUserId=${userId};expires=${d.toUTCString()};path=/`;
+    document.getElementById('val-' + typ).innerHTML = poctyNapoju[typ];
+    zkontrolujTlacitko();
 }
 
-function loadRememberedUser() {
+function zkontrolujPamet() {
+    let ulozeneId = localStorage.getItem('posledniUzivatel');
 
-    userId = localStorage.getItem('lastUserId');
+    if (ulozeneId != null) {
+        vybranyUzivatel = ulozeneId;
+        document.getElementById('userSelect').value = ulozeneId;
+        zkontrolujTlacitko();
+    }
+}
 
-    if (!userId) {
-        const name = "lastUserId=";
-        const decodedCookie = decodeURIComponent(document.cookie);
-        const ca = decodedCookie.split(';');
-        for(let i = 0; i < ca.length; i++) {
-            let c = ca[i];
-            while (c.charAt(0) === ' ') c = c.substring(1);
-            if (c.indexOf(name) === 0) {
-                userId = c.substring(name.length, c.length);
-                break;
-            }
+function zkontrolujTlacitko() {
+    let tlacitko = document.getElementById('submitBtn');
+    let mameUzivatele = false;
+    let mameNapoje = false;
+
+    if (vybranyUzivatel !== "") {
+        mameUzivatele = true;
+    }
+
+    for (let typ in poctyNapoju) {
+        if (poctyNapoju[typ] > 0) {
+            mameNapoje = true;
         }
     }
 
-    if (userId) {
-        userSelect.value = userId;
-        state.selectedUser = userId;
-        validateForm();
+    tlacitko.disabled = !(mameUzivatele === true && mameNapoje === true);
+}
+
+async function odeslatData() {
+    let tlacitko = document.getElementById('submitBtn');
+    tlacitko.disabled = true;
+
+    let odesilaneNapoje = [];
+    for (let typ in poctyNapoju) {
+        if (poctyNapoju[typ] > 0) {
+            odesilaneNapoje.push({
+                "type": typ,
+                "value": poctyNapoju[typ]
+            });
+        }
     }
-}
 
-
-function validateForm() {
-    const hasUser = !!state.selectedUser;
-    const hasDrinks = Object.values(state.drinkCounts).some(count => count > 0);
-    submitBtn.disabled = !(hasUser && hasDrinks);
-}
-
-async function submitData() {
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Odesílám...';
-
-    const payload = {
-        user: state.selectedUser.toString(),
-        drinks: Object.entries(state.drinkCounts).map(([type, value]) => ({
-            type: type,
-            value: value
-        }))
+    let payload = {
+        "user": vybranyUzivatel,
+        "drinks": odesilaneNapoje
     };
 
+    if (navigator.onLine === false) {
+        let fronta = localStorage.getItem('offlineFronta');
+        if (fronta == null) {
+            fronta = "[]";
+        }
+
+        let frontaPole = JSON.parse(fronta);
+        frontaPole.push(payload);
+        localStorage.setItem('offlineFronta', JSON.stringify(frontaPole));
+
+        alert("Jsi offline! Káva se uložila a odešle se, až zapneš internet.");
+        vynulovatNapoje();
+        return;
+    }
+
     try {
-        const response = await fetch(`${API_BASE}?cmd=saveDrinks`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+        let response = await fetch(API_URL + "?cmd=saveDrinks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload)
         });
 
         if (response.ok) {
-            showNotification('Úspěšně Odesláno!', false);
-            resetDrinks();
+            alert("Káva úspěšně odeslána na server!");
+            vynulovatNapoje();
         } else {
-            throw new Error('Chyba při odesílání');
+            alert("Chyba serveru při ukládání.");
         }
-    } catch (error) {
-        showNotification('Něco se pokazilo. Zkuste to znovu.', true);
-    } finally {
-        submitBtn.textContent = 'Odeslat';
-        validateForm();
+    } catch (chyba) {
+        alert("Něco se pokazilo. Možná vypadl signál při odesílání.");
     }
+
+    zkontrolujTlacitko();
 }
 
-function resetDrinks() {
-    for (let type in state.drinkCounts) {
-        state.drinkCounts[type] = 0;
-        document.getElementById(`val-${type}`).textContent = '0';
+function vynulovatNapoje() {
+    for (let typ in poctyNapoju) {
+        poctyNapoju[typ] = 0;
+        document.getElementById('val-' + typ).innerHTML = "0";
     }
-    validateForm();
+    zkontrolujTlacitko();
 }
 
-function showNotification(msg, isError) {
-    notification.textContent = msg;
-    notification.className = `notification ${isError ? 'error' : 'success'}`;
-    notification.classList.remove('hidden');
-    setTimeout(() => {
-        notification.classList.add('hidden');
-    }, 3000);
-}
+async function poslatOfflineData() {
+    if (navigator.onLine === false) return;
 
-init();
+    let fronta = localStorage.getItem('offlineFronta');
+    if (fronta == null || fronta === "[]") return;
+
+    let frontaPole = JSON.parse(fronta);
+
+    for (let i = 0; i < frontaPole.length; i++) {
+        await fetch(API_URL + "?cmd=saveDrinks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(frontaPole[i])
+        });
+    }
+
+    localStorage.setItem('offlineFronta', "[]");
+    alert("Byl jsi připojen k internetu. Staré uložené záznamy se odeslaly!");
+}
